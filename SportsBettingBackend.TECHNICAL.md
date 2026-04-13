@@ -2,7 +2,7 @@
 
 This project is a Spring Boot backend for an event-driven sports betting settlement workflow. It exposes a single REST API that accepts a sports event outcome, publishes that outcome to Kafka, matches the outcome against open bets stored in an in-memory H2 database, calculates win/loss and payout for each matching bet, publishes one settlement message per bet to RocketMQ, and then consumes those settlement messages to finalize each bet in the database. The application is intentionally designed as an asynchronous pipeline so that the HTTP layer only starts the process, while Kafka and RocketMQ handle the downstream settlement stages. The runtime remains a single Spring Boot application, but the codebase is organized as a Maven reactor with the modules `app`, `common-bean`, `core-services`, `intake-service`, `bet-settlement-service`, and `bet-finalizer-service`.
 
-Functionally, the project has four main responsibilities: accept and validate event outcomes, persist and query bet state, calculate settlement decisions using configured payout rules, and coordinate message flow across Kafka and RocketMQ. For this MVP there is no bet-placement API. Instead, when the application starts, H2 begins empty and `BetDataSeeder` inserts a small set of demo open bets if the `bets` table is empty so the full flow can be tested immediately. When an outcome is received, only open bets for the same `eventId` are considered, winning bets receive a payout based on `BetType`, losing bets always settle to `0.00`, and the final settled state is written back to H2 with result, payout, and settlement timestamp.
+Functionally, the project has four main responsibilities: accept and validate event outcomes, book and persist open bets, calculate settlement decisions using configured payout rules, and coordinate message flow across Kafka and RocketMQ. When the application starts, H2 begins empty and `BetDataSeeder` inserts a small set of demo open bets if the `bets` table is empty so the full flow can be tested immediately. Additional bets can also be created later through `POST /api/bets`. When an outcome is received, only open bets for the same `eventId` are considered, winning bets receive a payout based on `BetType`, losing bets always settle to `0.00`, and the final settled state is written back to H2 with result, payout, and settlement timestamp.
 
 ## 1. Technology Stack
 
@@ -104,28 +104,50 @@ SportyGroupWorkspace/
 
 ### 4.1 API Layer
 
-The API layer exposes one write endpoint:
+The API layer exposes two write endpoints:
 
+- `POST /api/bets`
 - `POST /api/event-outcomes`
 
-Input contract:
+`POST /api/bets` input contract:
+
+- `userId`
+- `eventId`
+- `eventMarketId`
+- `eventWinnerId`
+- `betAmount`
+- `betType`
+
+`POST /api/bets` behavior:
+
+1. Validate request fields
+2. Delegate booking to the application layer
+3. Persist the bet as `OPEN` in H2
+4. Return `201 Created` with the stored bet details
+
+`POST /api/event-outcomes` input contract:
 
 - `eventId`
 - `eventName`
 - `eventWinnerId`
 
-Behavior:
+`POST /api/event-outcomes` behavior:
 
 1. Validate request fields with `@NotBlank`
 2. Convert the HTTP DTO into `EventOutcomeMessage`
 3. Publish the message to Kafka
 4. Return `202 Accepted`
 
-This layer does not perform settlement. It only starts the asynchronous pipeline.
+The API layer books open bets and starts the asynchronous settlement pipeline. It does not perform settlement itself.
 
 ### 4.2 Application Layer
 
 The application layer contains the business flow:
+
+- `BetBookingService`
+  - allocates the next bet id from the highest existing persisted bet id
+  - creates a new `OPEN` bet
+  - persists the bet in H2
 
 - `EventOutcomePublisherService`
   - converts HTTP request data into the internal event-outcome message
@@ -182,12 +204,12 @@ The application layer contains the business flow:
 
 - `BetRepository`
   - `JpaRepository<Bet, Long>`
-  - custom finder `findByEventIdAndStatus`
+  - custom finders `findByEventIdAndStatus` and `findTopByOrderByIdDesc`
 
 - `BetDataSeeder`
   - runs at startup via `ApplicationRunner`
   - seeds sample open bets if the table is empty
-  - provides the initial H2 data set used by the MVP because bet creation is intentionally out of scope
+  - provides the initial H2 data set used by the MVP before additional bets are booked through the API
 
 ### 4.5 Configuration Layer
 
@@ -310,27 +332,32 @@ erDiagram
 
 ```mermaid
 flowchart LR
-    A["Client"] --> B["POST /api/event-outcomes"]
-    B --> C["EventOutcomeController.publish"]
-    C --> D["EventOutcomePublisherService.publish"]
-    D --> E["EventOutcomeMessagePublisher.publish"]
-    E --> F["Kafka topic: event-outcomes"]
-    F --> G["KafkaEventOutcomeConsumer.consume"]
-    G --> H["BetSettlementOrchestratorService.process"]
-    H --> I["BetRepository.findByEventIdAndStatus"]
-    I --> J{"Open bets found?"}
-    J -- No --> K["Log and stop"]
-    J -- Yes --> L["PayoutCalculator.determineSettlement"]
-    L --> M["Build BetSettlementMessage"]
-    M --> N["BetSettlementMessagePublisher.publish"]
-    N --> O["RocketMQ topic: bet-settlements"]
-    O --> P["RocketMqSettlementConsumer.onMessage / consume"]
-    P --> Q["BetSettlementFinalizerService.finalizeSettlement"]
-    Q --> R["BetRepository.findById"]
-    R --> S{"Bet exists and is OPEN?"}
-    S -- No --> T["Log and stop"]
-    S -- Yes --> U["Bet.markSettled"]
-    U --> V["BetRepository.save"]
+    A["Client"] --> B["POST /api/bets"]
+    B --> C["BetController.book"]
+    C --> D["BetBookingService.book"]
+    D --> E["BetRepository.findTopByOrderByIdDesc"]
+    E --> F["BetRepository.save"]
+    A --> G["POST /api/event-outcomes"]
+    G --> H["EventOutcomeController.publish"]
+    H --> I["EventOutcomePublisherService.publish"]
+    I --> J["EventOutcomeMessagePublisher.publish"]
+    J --> K["Kafka topic: event-outcomes"]
+    K --> L["KafkaEventOutcomeConsumer.consume"]
+    L --> M["BetSettlementOrchestratorService.process"]
+    M --> N["BetRepository.findByEventIdAndStatus"]
+    N --> O{"Open bets found?"}
+    O -- No --> P["Log and stop"]
+    O -- Yes --> Q["PayoutCalculator.determineSettlement"]
+    Q --> R["Build BetSettlementMessage"]
+    R --> S["BetSettlementMessagePublisher.publish"]
+    S --> T["RocketMQ topic: bet-settlements"]
+    T --> U["RocketMqSettlementConsumer.onMessage / consume"]
+    U --> V["BetSettlementFinalizerService.finalizeSettlement"]
+    V --> W["BetRepository.findById"]
+    W --> X{"Bet exists and is OPEN?"}
+    X -- No --> Y["Log and stop"]
+    X -- Yes --> Z["Bet.markSettled"]
+    Z --> AA["BetRepository.save"]
 ```
 
 ## 8. Startup Flow
@@ -365,7 +392,10 @@ flowchart TD
 
 | Class | Type | Responsibility | Key Methods / Members | Depends On |
 |---|---|---|---|---|
+| `BetController` | REST controller | Accepts bet-booking requests and returns created open bet details | `book(BookBetRequest)` | `BetBookingService` |
 | `EventOutcomeController` | REST controller | Accepts event-outcome requests and returns accepted response | `publish(EventOutcomeRequest)` | `EventOutcomePublisherService`, `AppProperties` |
+| `BookBetRequest` | Request DTO record | Defines validated bet-booking payload in `com.sportygroup.sportsbettingbackend.model` | `userId`, `eventId`, `eventMarketId`, `eventWinnerId`, `betAmount`, `betType` | Bean Validation, `BetType` |
+| `BookBetResponse` | Response DTO record | Defines created bet payload in `com.sportygroup.sportsbettingbackend.model` | `betId`, booking fields, `status` | `BetType`, `BetStatus` |
 | `EventOutcomeRequest` | Request DTO record | Defines validated HTTP request payload in `com.sportygroup.sportsbettingbackend.model` | `eventId`, `eventName`, `eventWinnerId` | Bean Validation |
 | `PublishEventOutcomeResponse` | Response DTO record | Defines HTTP success payload in `com.sportygroup.sportsbettingbackend.model` | `eventId`, `status`, `topic` | none |
 
@@ -375,6 +405,7 @@ flowchart TD
 |---|---|---|---|---|
 | `EventOutcomeMessagePublisher` | Interface | Outbound port for publishing event outcomes | `publish(EventOutcomeMessage)` | Implemented by messaging adapter |
 | `BetSettlementMessagePublisher` | Interface | Outbound port for publishing bet settlements | `publish(BetSettlementMessage)` | Implemented by messaging adapter |
+| `BetBookingService` | Service | Allocates the next bet id, creates an open bet, and persists it | `book(String, String, String, String, BigDecimal, BetType)` | `BetRepository` |
 | `EventOutcomePublisherService` | Service | Converts inbound request data to internal event message and delegates Kafka publish | `publish(String, String, String)` | `EventOutcomeMessagePublisher` |
 | `BetSettlementOrchestratorService` | Service | Matches outcome to open bets, calculates result, emits settlement messages | `process(EventOutcomeMessage)` | `BetRepository`, `PayoutCalculator`, `BetSettlementMessagePublisher` |
 | `PayoutCalculator` | Component | Calculates settlement decision using winner comparison and payout ratios | `determineSettlement(Bet, EventOutcomeMessage)` | `AppProperties` |
@@ -405,12 +436,32 @@ flowchart TD
 
 | Class | Type | Responsibility | Key Methods / Members | Depends On |
 |---|---|---|---|---|
-| `BetRepository` | Repository interface | Provides CRUD access and open-bet lookup by event | `findByEventIdAndStatus(...)` | Spring Data JPA |
+| `BetRepository` | Repository interface | Provides CRUD access, open-bet lookup by event, and max-id lookup for booking | `findByEventIdAndStatus(...)`, `findTopByOrderByIdDesc()` | Spring Data JPA |
 | `BetDataSeeder` | Startup component | Seeds sample bets on boot | `run(ApplicationArguments)` | `BetRepository` |
 
 ## 10. Method Hierarchy and Function Call Flow
 
-### 10.1 API-Initiated Outcome Publishing
+### 10.1 API-Initiated Bet Booking
+
+```text
+SportsBettingBackendApplication.main
+└── Spring Boot runtime
+    └── BetController.book(request)
+        ├── BetBookingService.book(
+        │       request.userId(),
+        │       request.eventId(),
+        │       request.eventMarketId(),
+        │       request.eventWinnerId(),
+        │       request.betAmount(),
+        │       request.betType()
+        │   )
+        │   ├── BetRepository.findTopByOrderByIdDesc()
+        │   ├── new Bet(nextId, ..., OPEN)
+        │   └── BetRepository.save(bet)
+        └── new BookBetResponse(...)
+```
+
+### 10.2 API-Initiated Outcome Publishing
 
 ```text
 SportsBettingBackendApplication.main
@@ -426,7 +477,7 @@ SportsBettingBackendApplication.main
         └── new PublishEventOutcomeResponse(...)
 ```
 
-### 10.2 Kafka Consumer to RocketMQ Producer Path
+### 10.3 Kafka Consumer to RocketMQ Producer Path
 
 ```text
 Kafka broker
@@ -450,7 +501,7 @@ Kafka broker
                 └── RocketMQTemplate.convertAndSend(topic, payload)
 ```
 
-### 10.3 RocketMQ Consumer to Database Finalization Path
+### 10.4 RocketMQ Consumer to Database Finalization Path
 
 ```text
 RocketMQ broker
@@ -466,7 +517,7 @@ RocketMQ broker
             └── BetRepository.save(bet)
 ```
 
-### 10.4 Startup Data Seeding
+### 10.5 Startup Data Seeding
 
 ```text
 Spring Boot startup
@@ -488,12 +539,22 @@ Spring Boot startup
 
 ### API
 
+- `BetController.book`
+  - validates bet-booking request
+  - delegates open-bet creation
+  - returns created bet response
+
 - `EventOutcomeController.publish`
   - validates request
   - triggers asynchronous publishing
   - returns accepted response
 
 ### Application
+
+- `BetBookingService.book`
+  - loads the current highest bet id
+  - allocates the next id
+  - persists a new `OPEN` bet
 
 - `EventOutcomePublisherService.publish`
   - accepts validated request field values
@@ -552,6 +613,9 @@ Spring Boot startup
 - `BetDataSeeder.run`
   - seeds demo data when the table is empty
 
+- `BetRepository.findTopByOrderByIdDesc`
+  - returns the highest existing bet id used by the booking API
+
 - `BetRepository.findByEventIdAndStatus`
   - returns only bets relevant for settlement matching
 
@@ -562,14 +626,15 @@ Spring Boot startup
 
 ### Happy Path
 
-1. Client calls `POST /api/event-outcomes`
-2. Controller publishes the event outcome to Kafka
-3. Kafka consumer receives the outcome
-4. Matching open bets are loaded from H2
-5. Each bet is evaluated using payout rules
-6. A RocketMQ settlement message is emitted per bet
-7. RocketMQ consumer receives each settlement message
-8. The target bet is marked `SETTLED`
+1. Client can call `POST /api/bets` to create an `OPEN` bet in H2
+2. Client calls `POST /api/event-outcomes`
+3. Controller publishes the event outcome to Kafka
+4. Kafka consumer receives the outcome
+5. Matching open bets are loaded from H2
+6. Each bet is evaluated using payout rules
+7. A RocketMQ settlement message is emitted per bet
+8. RocketMQ consumer receives each settlement message
+9. The target bet is marked `SETTLED`
 
 ### No-Match Path
 

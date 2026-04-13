@@ -4,18 +4,78 @@ info:
   version: 1.0.0
   description: >
     OpenAPI specification for the Sports Betting Backend assessment service.
-    The API publishes sports event outcomes to Kafka and starts the asynchronous
-    bet-settlement flow.
+    The API can book bets into H2 and publish sports event outcomes to Kafka
+    to start the asynchronous bet-settlement flow.
 
 servers:
   - url: http://localhost:8080
     description: Local development server
 
 tags:
+  - name: Bets
+    description: Book new open bets into the in-memory H2 store
   - name: Event Outcomes
     description: Publish sports event outcomes for asynchronous settlement processing
 
 paths:
+  /api/bets:
+    post:
+      tags:
+        - Bets
+      operationId: bookBet
+      summary: Book a new bet
+      description: >
+        Accepts a new bet payload, validates the required fields, persists the bet
+        as `OPEN` in H2, and returns `201 Created` with the stored bet details.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookBetRequest'
+            examples:
+              newBet:
+                summary: Premium bet for a new event
+                value:
+                  userId: user-9
+                  eventId: event-300
+                  eventMarketId: market-3
+                  eventWinnerId: winner-9
+                  betAmount: 50.00
+                  betType: PREMIUM
+      responses:
+        '201':
+          description: Bet created and stored as open
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookBetResponse'
+              examples:
+                created:
+                  value:
+                    betId: 1005
+                    userId: user-9
+                    eventId: event-300
+                    eventMarketId: market-3
+                    eventWinnerId: winner-9
+                    betAmount: 50.00
+                    betType: PREMIUM
+                    status: OPEN
+        '400':
+          description: Request validation failed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+              examples:
+                invalidBet:
+                  value:
+                    type: about:blank
+                    title: Bad Request
+                    status: 400
+                    detail: Validation failed for request body.
+                    instance: /api/bets
+
   /api/event-outcomes:
     post:
       tags:
@@ -69,6 +129,97 @@ paths:
 
 components:
   schemas:
+    BookBetRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - userId
+        - eventId
+        - eventMarketId
+        - eventWinnerId
+        - betAmount
+        - betType
+      properties:
+        userId:
+          type: string
+          minLength: 1
+          description: Identifier of the user placing the bet
+          example: user-9
+        eventId:
+          type: string
+          minLength: 1
+          description: Unique identifier of the sports event
+          example: event-300
+        eventMarketId:
+          type: string
+          minLength: 1
+          description: Identifier of the event market being bet on
+          example: market-3
+        eventWinnerId:
+          type: string
+          minLength: 1
+          description: Selected outcome identifier for the bet
+          example: winner-9
+        betAmount:
+          type: number
+          minimum: 0.01
+          description: Stake amount for the bet
+          example: 50.00
+        betType:
+          type: string
+          description: Bet classification used by payout rules
+          enum:
+            - STANDARD
+            - BOOSTED
+            - PREMIUM
+          example: PREMIUM
+
+    BookBetResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - betId
+        - userId
+        - eventId
+        - eventMarketId
+        - eventWinnerId
+        - betAmount
+        - betType
+        - status
+      properties:
+        betId:
+          type: integer
+          format: int64
+          description: Generated bet identifier
+          example: 1005
+        userId:
+          type: string
+          example: user-9
+        eventId:
+          type: string
+          example: event-300
+        eventMarketId:
+          type: string
+          example: market-3
+        eventWinnerId:
+          type: string
+          example: winner-9
+        betAmount:
+          type: number
+          example: 50.00
+        betType:
+          type: string
+          enum:
+            - STANDARD
+            - BOOSTED
+            - PREMIUM
+          example: PREMIUM
+        status:
+          type: string
+          enum:
+            - OPEN
+          example: OPEN
+
     EventOutcomeRequest:
       type: object
       additionalProperties: false

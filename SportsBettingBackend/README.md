@@ -1,6 +1,6 @@
 # Sports Betting Backend
 
-Spring Boot backend that simulates sports event outcome handling with Kafka, H2, and RocketMQ. The application still runs as a single Spring Boot service, but the codebase is now split into internal Maven modules so the intake flow, core services, shared beans, and messaging adapters are separated more clearly. For this MVP bets are seeded into the in-memory H2 database at application startup so the settlement flow can be tested immediately.
+Spring Boot backend that simulates sports event outcome handling with Kafka, H2, and RocketMQ. The application still runs as a single Spring Boot service, but the codebase is now split into internal Maven modules so the intake flow, core services, shared beans, and messaging adapters are separated more clearly. For this MVP bets are seeded into the in-memory H2 database at application startup so the settlement flow can be tested immediately, and additional bets can also be booked through the API.
 
 ## Prerequisites
 
@@ -60,7 +60,7 @@ The application defaults already point to the local Docker brokers:
 
 The API will be available on `http://localhost:8080`.
 
-When the application starts, H2 is initialized in memory and `BetDataSeeder` inserts demo open bets if the `bets` table is empty. There is no bet-placement API in this MVP, so these startup-seeded bets are the data used during local testing and settlement verification.
+When the application starts, H2 is initialized in memory and `BetDataSeeder` inserts demo open bets if the `bets` table is empty. Those seeded bets make local settlement testing immediate, and you can also create more open bets later through `POST /api/bets`.
 
 ## Module layout
 
@@ -122,7 +122,37 @@ Expected result:
 
 ### 2. End-to-end smoke test
 
-With the Docker infrastructure running and the Spring Boot app started, publish an event outcome:
+With the Docker infrastructure running and the Spring Boot app started, you can first book a new bet:
+
+```bash
+curl -X POST http://localhost:8080/api/bets \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "userId": "user-9",
+    "eventId": "event-300",
+    "eventMarketId": "market-3",
+    "eventWinnerId": "winner-9",
+    "betAmount": 50.00,
+    "betType": "PREMIUM"
+  }'
+```
+
+Expected booking response:
+
+```json
+{
+  "betId": 1005,
+  "userId": "user-9",
+  "eventId": "event-300",
+  "eventMarketId": "market-3",
+  "eventWinnerId": "winner-9",
+  "betAmount": 50.00,
+  "betType": "PREMIUM",
+  "status": "OPEN"
+}
+```
+
+Then publish an event outcome:
 
 ```bash
 curl -X POST http://localhost:8080/api/event-outcomes \
@@ -181,6 +211,38 @@ Expected query output example:
 
 ## API
 
+`POST /api/bets`
+
+Example request:
+
+```bash
+curl -X POST http://localhost:8080/api/bets \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "userId": "user-9",
+    "eventId": "event-300",
+    "eventMarketId": "market-3",
+    "eventWinnerId": "winner-9",
+    "betAmount": 50.00,
+    "betType": "PREMIUM"
+  }'
+```
+
+Example response:
+
+```json
+{
+  "betId": 1005,
+  "userId": "user-9",
+  "eventId": "event-300",
+  "eventMarketId": "market-3",
+  "eventWinnerId": "winner-9",
+  "betAmount": 50.00,
+  "betType": "PREMIUM",
+  "status": "OPEN"
+}
+```
+
 `POST /api/event-outcomes`
 
 OpenAPI specification:
@@ -209,7 +271,7 @@ Example response:
 }
 ```
 
-## Seeded bets
+## Seeded bets and booking
 
 The service starts with four in-memory H2 bets:
 
@@ -224,6 +286,8 @@ If you publish outcome `event-100` with `winner-1`, the service will:
 2. consume it and find matching open bets in H2
 3. publish one settlement message per bet to RocketMQ topic `bet-settlements`
 4. consume each settlement message and mark those bets as `SETTLED`
+
+You can also book new open bets later with `POST /api/bets`. New IDs are allocated after the highest existing bet ID in H2.
 
 ## Configuration
 

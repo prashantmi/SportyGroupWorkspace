@@ -34,4 +34,20 @@ class BetRepositoryTest {
                 .extracting(Bet::getId)
                 .containsExactly(1L);
     }
+
+    @Test
+    void shouldFindBetWithHighestId() {
+        betRepository.saveAll(List.of(
+                new Bet(1001L, "user-1", "event-100", "market-1", "winner-1",
+                        new BigDecimal("25.00"), BetType.STANDARD, BetStatus.OPEN),
+                new Bet(1004L, "user-2", "event-200", "market-1", "winner-2",
+                        new BigDecimal("50.00"), BetType.BOOSTED, BetStatus.OPEN),
+                new Bet(1002L, "user-3", "event-300", "market-1", "winner-3",
+                        new BigDecimal("40.00"), BetType.PREMIUM, BetStatus.OPEN)
+        ));
+
+        Bet highestIdBet = betRepository.findTopByOrderByIdDesc().orElseThrow();
+
+        assertThat(highestIdBet.getId()).isEqualTo(1004L);
+    }
 }
