@@ -187,6 +187,12 @@ Key defaults are defined in `src/main/resources/application.yml`:
 - Kafka topic: `event-outcomes`
 - RocketMQ topic: `bet-settlements`
 - Payout ratios: `STANDARD=1.0`, `BOOSTED=1.5`, `PREMIUM=2.0`
+- Business assumption for this MVP: `BetType` is used as a proxy for relative risk/odds.
+- `STANDARD` is treated as the highest-probability, lowest-return bet type.
+- `BOOSTED` is treated as a medium-probability, higher-return bet type.
+- `PREMIUM` is treated as the lowest-probability, highest-return bet type.
+- Payout ratios apply only when a bet result is `WIN`.
+- A losing bet always settles with payout `0.00` because the full stake is treated as lost.
 
 ## Notes
 
