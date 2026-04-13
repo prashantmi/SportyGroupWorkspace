@@ -1,6 +1,6 @@
 # Sports Betting Backend
 
-Spring Boot backend that simulates sports event outcome handling with Kafka, H2, and RocketMQ. For this MVP bets are seeded into the in-memory H2 database at application startup so the settlement flow can be tested immediately.
+Spring Boot backend that simulates sports event outcome handling with Kafka, H2, and RocketMQ. The application still runs as a single Spring Boot service, but the codebase is now split into internal Maven modules so the API, core services, shared beans, and messaging adapters are separated more clearly. For this MVP bets are seeded into the in-memory H2 database at application startup so the settlement flow can be tested immediately.
 
 ## Prerequisites
 
@@ -49,7 +49,8 @@ Then start the backend service:
 
 ```bash
 cd SportsBettingBackend
-./mvnw spring-boot:run
+./mvnw -pl backend-app -am package -DskipTests
+java -jar backend-app/target/backend-app-0.0.1-SNAPSHOT.jar
 ```
 
 The application defaults already point to the local Docker brokers:
@@ -60,6 +61,17 @@ The application defaults already point to the local Docker brokers:
 The API will be available on `http://localhost:8080`.
 
 When the application starts, H2 is initialized in memory and `BetDataSeeder` inserts demo open bets if the `bets` table is empty. There is no bet-placement API in this MVP, so these startup-seeded bets are the data used during local testing and settlement verification.
+
+## Module layout
+
+The Maven reactor is split into these modules:
+
+- `backend-app`: runnable Spring Boot application, `application.yml`, and the end-to-end integration test
+- `common-beans`: shared configuration, domain records/enums, JPA entity, repository, and data seeder
+- `core-services`: business services and payout logic
+- `event-outcome-api`: REST API classes and Kafka event-outcome publisher
+- `kafka-settlement-processor`: Kafka consumer and RocketMQ settlement publisher
+- `rocketmq-settlement-finalizer`: RocketMQ settlement consumer
 
 ## Optional live message monitoring
 
@@ -215,7 +227,7 @@ If you publish outcome `event-100` with `winner-1`, the service will:
 
 ## Configuration
 
-Key defaults are defined in `src/main/resources/application.yml`:
+Key defaults are defined in `backend-app/src/main/resources/application.yml`:
 
 - Kafka topic: `event-outcomes`
 - RocketMQ topic: `bet-settlements`
