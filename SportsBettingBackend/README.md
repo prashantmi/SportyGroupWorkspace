@@ -1,6 +1,6 @@
 # Sports Betting Backend
 
-Spring Boot backend that simulates sports event outcome handling with Kafka, H2, and RocketMQ.
+Spring Boot backend that simulates sports event outcome handling with Kafka, H2, and RocketMQ. For this MVP bets are seeded into the in-memory H2 database at application startup so the settlement flow can be tested immediately.
 
 ## Prerequisites
 
@@ -58,6 +58,8 @@ The application defaults already point to the local Docker brokers:
 - `ROCKETMQ_NAME_SERVER=localhost:9876`
 
 The API will be available on `http://localhost:8080`.
+
+When the application starts, H2 is initialized in memory and `BetDataSeeder` inserts demo open bets if the `bets` table is empty. There is no bet-placement API in this MVP, so these startup-seeded bets are the data used during local testing and settlement verification.
 
 ## Proper testing
 
