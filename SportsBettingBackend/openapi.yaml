@@ -1,0 +1,140 @@
+openapi: 3.1.0
+info:
+  title: Sports Betting Backend API
+  version: 1.0.0
+  description: >
+    OpenAPI specification for the Sports Betting Backend assessment service.
+    The API publishes sports event outcomes to Kafka and starts the asynchronous
+    bet-settlement flow.
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+tags:
+  - name: Event Outcomes
+    description: Publish sports event outcomes for asynchronous settlement processing
+
+paths:
+  /api/event-outcomes:
+    post:
+      tags:
+        - Event Outcomes
+      operationId: publishEventOutcome
+      summary: Publish a sports event outcome
+      description: >
+        Accepts a sports event outcome payload, validates the required fields,
+        publishes the event to Kafka topic `event-outcomes`, and returns `202 Accepted`.
+        Bet settlement continues asynchronously after the response is returned.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventOutcomeRequest'
+            examples:
+              eventOutcome:
+                summary: Match winner outcome
+                value:
+                  eventId: event-100
+                  eventName: Match Winner
+                  eventWinnerId: winner-1
+      responses:
+        '202':
+          description: Event outcome accepted and published to Kafka
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishEventOutcomeResponse'
+              examples:
+                accepted:
+                  value:
+                    eventId: event-100
+                    status: PUBLISHED
+                    topic: event-outcomes
+        '400':
+          description: Request validation failed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+              examples:
+                blankFields:
+                  value:
+                    type: about:blank
+                    title: Bad Request
+                    status: 400
+                    detail: Validation failed for request body.
+                    instance: /api/event-outcomes
+
+components:
+  schemas:
+    EventOutcomeRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - eventName
+        - eventWinnerId
+      properties:
+        eventId:
+          type: string
+          minLength: 1
+          description: Unique identifier of the sports event
+          example: event-100
+        eventName:
+          type: string
+          minLength: 1
+          description: Human-readable event name or market label
+          example: Match Winner
+        eventWinnerId:
+          type: string
+          minLength: 1
+          description: Identifier of the winning outcome for the event
+          example: winner-1
+
+    PublishEventOutcomeResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - status
+        - topic
+      properties:
+        eventId:
+          type: string
+          description: Event identifier received in the request
+          example: event-100
+        status:
+          type: string
+          description: API publication status
+          enum:
+            - PUBLISHED
+          example: PUBLISHED
+        topic:
+          type: string
+          description: Kafka topic where the message was published
+          example: event-outcomes
+
+    ProblemDetail:
+      type: object
+      description: RFC 9457 problem detail response
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          example: about:blank
+        title:
+          type: string
+          example: Bad Request
+        status:
+          type: integer
+          format: int32
+          example: 400
+        detail:
+          type: string
+          example: Validation failed for request body.
+        instance:
+          type: string
+          format: uri-reference
+          example: /api/event-outcomes

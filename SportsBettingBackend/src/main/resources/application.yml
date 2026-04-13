@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: sports-betting-backend
+  datasource:
+    url: jdbc:h2:mem:sportsbetting;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      group-id: ${KAFKA_CONSUMER_GROUP:sports-betting-backend}
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+rocketmq:
+  name-server: ${ROCKETMQ_NAME_SERVER:localhost:9876}
+  producer:
+    group: ${ROCKETMQ_PRODUCER_GROUP:sports-betting-backend-producer}
+
+app:
+  kafka:
+    event-outcomes-topic: ${EVENT_OUTCOMES_TOPIC:event-outcomes}
+  rocketmq:
+    bet-settlements-topic: ${BET_SETTLEMENTS_TOPIC:bet-settlements}
+    consumer-group: ${BET_SETTLEMENTS_CONSUMER_GROUP:sports-betting-settlement-consumer}
+  payout-ratios:
+    STANDARD: 1.0
+    BOOSTED: 1.5
+    PREMIUM: 2.0
