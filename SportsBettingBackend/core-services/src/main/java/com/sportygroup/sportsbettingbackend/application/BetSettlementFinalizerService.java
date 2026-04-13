@@ -38,5 +38,13 @@ public class BetSettlementFinalizerService {
 
         bet.markSettled(settlementMessage.result(), settlementMessage.payoutAmount(), Instant.now());
         betRepository.save(bet);
+        log.info(
+                "Settled bet in database. betId={}, eventId={}, result={}, payoutAmount={}, status={}",
+                bet.getId(),
+                bet.getEventId(),
+                bet.getResult(),
+                bet.getPayoutAmount(),
+                bet.getStatus()
+        );
     }
 }

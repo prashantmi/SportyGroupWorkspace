@@ -8,6 +8,8 @@ import org.apache.rocketmq.spring.annotation.ConsumeMode;
 import org.apache.rocketmq.spring.annotation.MessageModel;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -18,6 +20,8 @@ import org.springframework.stereotype.Component;
         messageModel = MessageModel.CLUSTERING
 )
 public class RocketMqSettlementConsumer implements RocketMQListener<String> {
+
+    private static final Logger log = LoggerFactory.getLogger(RocketMqSettlementConsumer.class);
 
     private final ObjectMapper objectMapper;
     private final BetSettlementFinalizerService betSettlementFinalizerService;
@@ -36,7 +40,9 @@ public class RocketMqSettlementConsumer implements RocketMQListener<String> {
     }
 
     public void consume(String payload) {
-        betSettlementFinalizerService.finalizeSettlement(readValue(payload));
+        BetSettlementMessage settlementMessage = readValue(payload);
+        log.info("Consumed RocketMQ bet settlement message: {}", settlementMessage);
+        betSettlementFinalizerService.finalizeSettlement(settlementMessage);
     }
 
     private BetSettlementMessage readValue(String payload) {

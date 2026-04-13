@@ -51,6 +51,7 @@ public class BetSettlementOrchestratorService {
                     decision.result(),
                     decision.payoutAmount()
             );
+            log.info("Publishing bet settlement to RocketMQ: {}", settlementMessage);
             betSettlementMessagePublisher.publish(settlementMessage);
         }
     }

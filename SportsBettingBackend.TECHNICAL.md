@@ -195,6 +195,41 @@ The application layer contains the business flow:
   - deserializes the payload
   - invokes `BetSettlementFinalizerService`
 
+`RocketMqSettlementConsumer` is registered with this annotation:
+
+```java
+@RocketMQMessageListener(
+        topic = "${app.rocketmq.bet-settlements-topic}",
+        consumerGroup = "${app.rocketmq.consumer-group}",
+        consumeMode = ConsumeMode.CONCURRENTLY,
+        messageModel = MessageModel.CLUSTERING
+)
+```
+
+Attribute definitions for this listener:
+
+- `topic = "${app.rocketmq.bet-settlements-topic}"`
+  - resolves from `app.rocketmq.bet-settlements-topic` in `application.yml`
+  - current default value is `bet-settlements`
+  - can be overridden with environment variable `BET_SETTLEMENTS_TOPIC`
+  - this is the RocketMQ topic subscribed by `RocketMqSettlementConsumer` and published to by `RocketMqSettlementPublisher`
+
+- `consumerGroup = "${app.rocketmq.consumer-group}"`
+  - resolves from `app.rocketmq.consumer-group` in `application.yml`
+  - current default value is `sports-betting-settlement-consumer`
+  - can be overridden with environment variable `BET_SETTLEMENTS_CONSUMER_GROUP`
+  - this identifies the logical RocketMQ consumer group used for offset tracking and load sharing
+
+- `consumeMode = ConsumeMode.CONCURRENTLY`
+  - RocketMQ may dispatch messages to the consumer concurrently instead of enforcing ordered consumption
+  - ordering is not required here because settlement messages are handled independently per bet
+  - the finalizer already guards against duplicate processing by checking whether a bet is already `SETTLED`
+
+- `messageModel = MessageModel.CLUSTERING`
+  - in clustering mode, messages are shared across instances in the same consumer group rather than broadcast to every instance
+  - this means a given settlement message is expected to be processed by one consumer instance in the group
+  - this is the correct model for scaling the finalizer without intentionally duplicating settlement work
+
 ### 4.4 Persistence Layer
 
 - `Bet`
@@ -656,6 +691,6 @@ Spring Boot startup
 - No dead-letter queues
 - No retry orchestration beyond broker/client defaults
 - No distributed transaction across Kafka, RocketMQ, and H2
-- API is intentionally minimal and only supports event outcome publishing
+- API is intentionally minimal and only supports bet booking and event outcome publishing
 
 This document describes the implementation as it exists now in the reactor-based codebase.

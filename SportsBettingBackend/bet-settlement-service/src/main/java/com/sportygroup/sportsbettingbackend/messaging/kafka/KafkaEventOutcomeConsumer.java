@@ -4,11 +4,15 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sportygroup.sportsbettingbackend.application.BetSettlementOrchestratorService;
 import com.sportygroup.sportsbettingbackend.domain.EventOutcomeMessage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
 @Component
 public class KafkaEventOutcomeConsumer {
+
+    private static final Logger log = LoggerFactory.getLogger(KafkaEventOutcomeConsumer.class);
 
     private final ObjectMapper objectMapper;
     private final BetSettlementOrchestratorService betSettlementOrchestratorService;
@@ -23,7 +27,9 @@ public class KafkaEventOutcomeConsumer {
 
     @KafkaListener(topics = "${app.kafka.event-outcomes-topic}")
     public void consume(String payload) {
-        betSettlementOrchestratorService.process(readValue(payload));
+        EventOutcomeMessage outcome = readValue(payload);
+        log.info("Consumed Kafka event outcome message: {}", outcome);
+        betSettlementOrchestratorService.process(outcome);
     }
 
     private EventOutcomeMessage readValue(String payload) {
