@@ -11,22 +11,18 @@
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>core-services</artifactId>
-    <name>core-services</name>
+    <artifactId>common-bean</artifactId>
+    <name>common-bean</name>
 
     <dependencies>
         <dependency>
-            <groupId>com.sportygroup</groupId>
-            <artifactId>common-bean</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter</artifactId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-tx</artifactId>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

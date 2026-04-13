@@ -23,11 +23,11 @@
     </properties>
 
     <modules>
-        <module>common-beans</module>
+        <module>common-bean</module>
         <module>core-services</module>
-        <module>event-outcome-api</module>
-        <module>kafka-settlement-processor</module>
-        <module>rocketmq-settlement-finalizer</module>
-        <module>backend-app</module>
+        <module>intake-service</module>
+        <module>bet-settlement-service</module>
+        <module>bet-finalizer-service</module>
+        <module>app</module>
     </modules>
 </project>
