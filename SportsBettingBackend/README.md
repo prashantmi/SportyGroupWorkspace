@@ -105,11 +105,15 @@ Open the H2 console:
 
 - `http://localhost:8080/h2-console`
 
-Use:
+Use these login settings:
 
 - JDBC URL: `jdbc:h2:mem:sportsbetting`
 - Username: `sa`
 - Password: leave blank
+
+H2 login example:
+
+![H2 Console Login](docs/images/h2-console-login.png)
 
 Run:
 
@@ -125,6 +129,10 @@ Expected rows:
 - `1001` -> `SETTLED`, `WIN`, `100.00`
 - `1002` -> `SETTLED`, `LOSS`, `0.00`
 - `1003` -> `SETTLED`, `WIN`, `80.00`
+
+Expected query output example:
+
+![H2 Console Query Results](docs/images/h2-console-query-results.png)
 
 ## API
 
