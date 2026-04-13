@@ -395,6 +395,84 @@ flowchart LR
     Z --> AA["BetRepository.save"]
 ```
 
+### 7.1 Sequence Diagrams by Module
+
+The runtime call chain is easier to review when the sequence is grouped by module instead of by individual classes.
+
+Module responsibilities in the sequence:
+
+- `intake-service`: inbound HTTP API and request/response DTO handling
+- `core-services`: business use cases and orchestration
+- `common-bean`: shared domain model plus repository access into H2
+- `bet-settlement-service`: Kafka consumption and RocketMQ settlement publishing
+- `bet-finalizer-service`: RocketMQ consumption and final settlement persistence
+- external brokers: Kafka and RocketMQ
+
+#### `POST /api/bets` module-level booking sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant Intake as "intake-service"
+    participant Core as "core-services"
+    participant Common as "common-bean"
+
+    Client->>Intake: POST /api/bets (BookBetRequest)
+    Note over Intake: Validate request and accept booking via BetController
+    Intake->>Core: Delegate booking use case
+    Note over Core: BetBookingService allocates next bet id and creates OPEN bet
+    Core->>Common: Query highest persisted bet id
+    Common-->>Core: Highest id or empty result
+    Core->>Common: Persist new Bet
+    Common-->>Core: Stored Bet entity
+    Core-->>Intake: Created Bet
+    Intake-->>Client: 201 Created (BookBetResponse)
+```
+
+#### `POST /api/event-outcomes` module-level settlement sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant Intake as "intake-service"
+    participant Core as "core-services"
+    participant Kafka as "Kafka topic: event-outcomes"
+    participant Settlement as "bet-settlement-service"
+    participant Common as "common-bean"
+    participant Rocket as "RocketMQ topic: bet-settlements"
+    participant Finalizer as "bet-finalizer-service"
+
+    Client->>Intake: POST /api/event-outcomes (EventOutcomeRequest)
+    Note over Intake: Validate request in EventOutcomeController
+    Intake->>Core: Delegate outcome publishing use case
+    Note over Core: EventOutcomePublisherService builds EventOutcomeMessage
+    Core-->>Intake: EventOutcomeMessage ready for outbound publish
+    Intake->>Kafka: Publish event outcome to Kafka via messaging adapter
+    Intake-->>Client: 202 Accepted (PublishEventOutcomeResponse)
+
+    Kafka->>Settlement: Deliver event outcome message
+    Note over Settlement: Kafka consumer receives outcome and starts orchestration
+    Settlement->>Core: Process settlement use case
+    Core->>Common: Load OPEN bets for eventId
+    Common-->>Core: Matching open bets
+
+    loop for each matching open bet
+        Note over Core: Calculate win or loss and payout
+        Core->>Settlement: Emit bet settlement message
+        Settlement->>Rocket: Publish settlement to RocketMQ
+    end
+
+    Rocket->>Finalizer: Deliver bet settlement message
+    Note over Finalizer: RocketMQ consumer triggers final settlement
+    Finalizer->>Core: Finalize settlement use case
+    Core->>Common: Load target bet by id
+    Common-->>Core: Persisted Bet
+    Core->>Common: Save settled Bet with result, payout, and settledAt
+    Common-->>Core: Updated Bet stored in H2
+```
+
 ## 8. Startup Flow
 
 ```mermaid

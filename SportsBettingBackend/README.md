@@ -73,6 +73,51 @@ The Maven reactor is split into these modules:
 - `bet-settlement-service`: Kafka consumer and RocketMQ settlement publisher
 - `bet-finalizer-service`: RocketMQ settlement consumer
 
+## `POST /api/event-outcomes` module-level settlement sequence
+
+This sequence shows the settlement flow across modules rather than individual classes.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant Intake as "intake-service"
+    participant Core as "core-services"
+    participant Kafka as "Kafka topic: event-outcomes"
+    participant Settlement as "bet-settlement-service"
+    participant Common as "common-bean"
+    participant Rocket as "RocketMQ topic: bet-settlements"
+    participant Finalizer as "bet-finalizer-service"
+
+    Client->>Intake: POST /api/event-outcomes (EventOutcomeRequest)
+    Note over Intake: Validate request and accept outcome publish request
+    Intake->>Core: Delegate outcome publishing use case
+    Note over Core: Build EventOutcomeMessage for outbound publish
+    Core-->>Intake: EventOutcomeMessage ready
+    Intake->>Kafka: Publish event outcome to Kafka
+    Intake-->>Client: 202 Accepted (PublishEventOutcomeResponse)
+
+    Kafka->>Settlement: Deliver event outcome message
+    Note over Settlement: Kafka consumer starts settlement processing
+    Settlement->>Core: Process settlement use case
+    Core->>Common: Load OPEN bets for eventId
+    Common-->>Core: Matching open bets
+
+    loop for each matching open bet
+        Note over Core: Calculate win or loss and payout
+        Core->>Settlement: Emit bet settlement message
+        Settlement->>Rocket: Publish settlement to RocketMQ
+    end
+
+    Rocket->>Finalizer: Deliver bet settlement message
+    Note over Finalizer: RocketMQ consumer triggers final settlement
+    Finalizer->>Core: Finalize settlement use case
+    Core->>Common: Load target bet by id
+    Common-->>Core: Persisted Bet
+    Core->>Common: Save settled Bet with result, payout, and settledAt
+    Common-->>Core: Updated Bet stored in H2
+```
+
 ## Optional live message monitoring
 
 Open additional terminals before sending the API request.
