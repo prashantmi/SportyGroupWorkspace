@@ -5,7 +5,7 @@ Spring Boot backend that simulates sports event outcome handling with Kafka, H2,
 ## Prerequisites
 
 - Java 17
-- Docker Desktop or Docker Engine with Compose support
+- Docker Engine with Compose support
 - Maven 3.9+ or the included `./mvnw`
 
 ## After checkout
@@ -60,6 +60,37 @@ The application defaults already point to the local Docker brokers:
 The API will be available on `http://localhost:8080`.
 
 When the application starts, H2 is initialized in memory and `BetDataSeeder` inserts demo open bets if the `bets` table is empty. There is no bet-placement API in this MVP, so these startup-seeded bets are the data used during local testing and settlement verification.
+
+## Optional live message monitoring
+
+Open additional terminals before sending the API request.
+
+Kafka monitor:
+
+```bash
+docker exec -it sporty-kafka kafka-console-consumer \
+  --bootstrap-server localhost:9092 \
+  --topic event-outcomes \
+  --property print.key=true \
+  --property key.separator=' => '
+```
+
+This keeps the consumer open and prints each published Kafka event as it arrives.
+
+RocketMQ monitor:
+
+```bash
+while true; do
+  docker exec sporty-rocketmq-broker sh -lc \
+    '/home/rocketmq/rocketmq-5.3.1/bin/mqadmin consumeMessage \
+      -n rocketmq-nameserver:9876 \
+      -t bet-settlements \
+      -c 10'
+  sleep 3
+done
+```
+
+The command above polls the `bet-settlements` topic repeatedly and prints the latest settlement messages.
 
 ## Proper testing
 
@@ -200,5 +231,4 @@ Key defaults are defined in `src/main/resources/application.yml`:
 
 - Persistence is H2 in-memory only; restarting the app resets the data.
 - The H2 console is available at `http://localhost:8080/h2-console`.
-- This is an assessment-grade MVP and intentionally omits production concerns like DLQs, retries, and distributed transaction handling.
-- To stop the local infrastructure, run `docker-compose down` from the workspace root. If your machine uses the plugin form, use `docker compose down`.
+- To stop the local infrastructure, run `docker-compose down` or `docker compose down` from the workspace root.
