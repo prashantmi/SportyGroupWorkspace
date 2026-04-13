@@ -31,14 +31,14 @@ services:
       - -c
       - |
         /etc/confluent/docker/run &
-        kafka_pid=$!
+        kafka_pid=$$!
         cub kafka-ready -b localhost:9092 1 120
         kafka-topics --bootstrap-server localhost:9092 \
           --create --if-not-exists \
           --topic event-outcomes \
           --partitions 1 \
           --replication-factor 1
-        wait "$kafka_pid"
+        wait "$$kafka_pid"
 
   rocketmq-nameserver:
     image: apache/rocketmq:5.3.1
@@ -66,10 +66,10 @@ services:
         sh /home/rocketmq/rocketmq-5.3.1/bin/mqbroker \
           -n rocketmq-nameserver:9876 \
           -c /home/rocketmq/rocketmq-5.3.1/conf/broker.conf &
-        broker_pid=$!
+        broker_pid=$$!
         sleep 10
         sh /home/rocketmq/rocketmq-5.3.1/bin/mqadmin updateTopic \
           -n rocketmq-nameserver:9876 \
           -c DefaultCluster \
           -t bet-settlements || true
-        wait "$broker_pid"
+        wait "$$broker_pid"
